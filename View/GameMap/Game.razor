@@ -1,0 +1,109 @@
+﻿@page "/Game"
+@using Model.Playground
+@using Model.Factories
+@using Model.Entities
+@using View.Dialogs
+@inject IDialogService DialogService
+
+<MudPaper Class="game-board d-flex" Style="height: inherit !important; background: none !important; box-shadow: none !important;">
+    <MudButtonGroup Color="Color.Primary" Variant="Variant.Filled" VerticalAlign="true" Class="mr-5 ml-5 place-self-center">
+        <MudButton OnClick="@(() => SetCurrentLayer(0))">One</MudButton>
+        <MudButton OnClick="@(() => SetCurrentLayer(1))">Two</MudButton>
+        <MudButton OnClick="@(() => SetCurrentLayer(2))">Three</MudButton>
+        <MudButton OnClick="@(() => SetCurrentLayer(3))">Four</MudButton>
+        <MudButton OnClick="@(() => SetCurrentLayer(4))">Five</MudButton>
+        <MudButton OnClick="@(() => SetCurrentLayer(5))">Six</MudButton>
+        <MudButton OnClick="@(() => SetCurrentLayer(6))">Seven</MudButton>
+        <MudButton OnClick="@(() => SetCurrentLayer(7))">Eight</MudButton>
+        <MudButton OnClick="@(() => SetCurrentLayer(8))">Nine</MudButton>
+        <MudButton OnClick="@(() => SetCurrentLayer(9))">Ten</MudButton>
+    </MudButtonGroup>
+    <MudContainer>
+        <MudText Align="Align.Center" Color="Color.Primary" Typo="Typo.h5" Class="mb-5 mt-5">Current Altitude: @(CurrentLayer + 1)</MudText>
+        <MudDropContainer T="DropItem" @ref="Container" Items="@_items.Where(i => i.Identifier.Last().ToString() == CurrentLayer.ToString())" CanDropClass="mud-border-info" NoDropClass="mud-border-error" CanDrop="@((_, identifier) => _items.Count(x => x.Identifier == identifier) == 0)" ItemsSelector="@((item, dropzone) => item.Identifier == dropzone)" ItemDropped="ItemUpdated" Class="border-2 border-solid mud-border-lines-default game-board" Style="width: max-content !important;">
+            <ChildContent>
+                @for (var r = 0; r < GameMap.GameMap.GetLength(0); r++){
+                    var row = r.ToString();
+                    <div class="d-flex">
+                        @for (var c = 0; c < GameMap.GameMap.GetLength(1); c++){
+                            var col = c.ToString();
+                            <MudDropZone T="DropItem" Identifier="@($"{row}{col}{CurrentLayer}")" DraggingClass="mud-theme-success" Class="d-flex justify-center align-center border-2 border-solid docs-gray-bg mud-border-lines-default" Style="height:64px;width:64px;"/>
+                        }
+                    </div>
+                }
+            </ChildContent>
+            <ItemRenderer>
+                <div class="d-flex justify-center align-center flex-grow-1">
+                    <MudIconButton Icon="@Icons.Custom.Brands.Telegram" Color="@context.Color" Size="Size.Large" OnClick="() => ChangeAltitude(context)"/>
+                </div>
+            </ItemRenderer>
+        </MudDropContainer>
+    </MudContainer>
+    <MudGrid Class="mr-5 ml-5 place-self-center d-block">
+        <MudAlert Severity="Severity.Normal" Dense="true" Class="my-2">Dense Default</MudAlert>
+        <MudAlert Severity="Severity.Info" Dense="true" Class="my-2">Dense Info</MudAlert>
+        <MudAlert Severity="Severity.Success" Dense="true" Class="my-2">Dense Success</MudAlert>
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="my-2">Dense Warning</MudAlert>
+        <MudAlert Severity="Severity.Error" Dense="true" Class="my-2">Dense Error</MudAlert>
+    </MudGrid>
+</MudPaper>
+
+
+@code {
+
+    private Map GameMap { get; set; } = new();
+    private readonly List<DropItem> _items = new();
+    private int CurrentLayer { get; set; }
+    private MudDropContainer<DropItem> Container { get; set; } = new();
+
+    protected override void OnInitialized(){
+        var a1 = AircraftFactory.GetInstance().CreateBlueDevil();
+        GameMap.SetAircraftOnField(a1, new Point(1, 1, a1.Altitude));
+        var a2 = AircraftFactory.GetInstance().CreateGrotBommer();
+        GameMap.SetAircraftOnField(a2, new Point(2, 2, a2.Altitude));
+        var a3 = AircraftFactory.GetInstance().CreateBlueDevil();
+        a3.Altitude++;
+        GameMap.SetAircraftOnField(a3, new Point(3, 3, a3.Altitude));
+        Load();
+    }
+
+    private void Load(){
+        _items.Clear();
+        foreach (var field in GameMap.GetFieldsWithAircraft()){
+            _items.Add(field.Aircraft is {Team:ETeam.Orks } ? new DropItem(){ Color = Color.Success, Identifier = $"{field.X}{field.Y}{field.Z}", Field = field} : new DropItem(){ Color = Color.Primary, Identifier = $"{field.X}{field.Y}{field.Z}", Field = field});
+        }
+    }
+
+    private void ItemUpdated(MudItemDropInfo<DropItem> dropItem){
+        dropItem.Item.Identifier = dropItem.DropzoneIdentifier;
+    }
+
+    public class DropItem{
+        public Color Color { get; init; }
+        public string Identifier { get; set; } = string.Empty;
+        public Field? Field { get; init; }
+    }
+
+    private void SetCurrentLayer(int layer){
+        CurrentLayer = layer;
+        StateHasChanged();
+        Container.Refresh();
+    }
+
+    private async Task ChangeAltitude(DropItem item){
+        var options = new DialogOptions{ CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var parameters = new DialogParameters(){
+            { "Aircraft", item.Field?.Aircraft }
+        };
+        var dialog = await DialogService.ShowAsync<AltitudeDialog>("Change Altitude", parameters, options);
+        var result = await dialog.Result;
+        if (!result.Canceled){
+            var newAltitude = (int)result.Data;
+            GameMap.ChangeAltitude(item.Field?.Aircraft, newAltitude);
+            Load();
+            StateHasChanged();
+            Container.Refresh();
+        }
+    }
+
+}
